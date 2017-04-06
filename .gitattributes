@@ -1,0 +1,4 @@
+# Setup linguist vendoring
+# Ignore HTML files, because they're generated
+notebooks/*.html linguist-vendored
+vignettes/* linguist-vendored
