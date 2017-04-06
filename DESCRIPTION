@@ -10,7 +10,7 @@ Description:
   was built using a corpus of data provided by the SwiftKey company.
 Depends: R (>= 3.3.3)
 License: MIT + file LICENSE
-LazyData: FALSE
+LazyData: TRUE
 RoxygenNote: 6.0.1
 Imports:
     magrittr,
