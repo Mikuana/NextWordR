@@ -2,8 +2,7 @@ library(htmltools)
 library(shiny)
 library(NextWordR)
 
-# Come up with a programmatic naming scheme to ensure consistent calls in
-# dynamic button generation and listeing
+# programmatic naming scheme to ensures consistent calls in button generation and listeners
 sugg_butt_name = function(suggestion) { paste("sugg", suggestion, sep='_') }
 
 # Generate a single dynamic suggestion button
@@ -11,7 +10,7 @@ sugg_butt_make = function(suggestion) {
   actionButton(sugg_butt_name(suggestion), label=suggestion)
 }
 
-# Generate a listener for a single dynamic suggestion button
+# Generate a listener for a single dynamically generated suggestion button
 sugg_butt_listen = function(input, output, session, suggestion) {
   observeEvent(input[[sugg_butt_name(suggestion)]],{
     updateTextInput(
@@ -21,23 +20,30 @@ sugg_butt_listen = function(input, output, session, suggestion) {
   })
 }
 
+
+# Start UI definition
 ui =
   fluidPage(
     titlePanel("Next Word Text Prediction"),
       mainPanel(
-        fluidRow(textInput('usertext', NULL, placeholder = "enter your text to see suggestions")),
+        fluidRow(
+          textAreaInput(
+            'usertext', NULL, placeholder = "type or click",
+            width = 400, height = 150
+          )
+        ),
         fluidRow(uiOutput('buttons'))
       )
     )
 
 
+# Start Server Definition
 server = function(input, output, session) {
   ntext = eventReactive(input$goButton, {
     input$n
   })
 
-  # Watch for a change in user text
-  observeEvent(input$usertext, {
+  observeEvent(input$usertext, {  # Watch for a change in user text
     suggestions = nextword(input$usertext)  # generate new suggestion based upon user text
 
     output$buttons = renderUI({  # generate new buttons for suggestions
