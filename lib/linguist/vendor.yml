@@ -1,2 +1,2 @@
-notebooks/* linguist-vendored
-
+# Ignore HTML files, because they're generated
+- \.html$
