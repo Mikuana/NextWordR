@@ -2,4 +2,5 @@
 
 export(manage_data)
 export(nextword)
+export(nextword_app)
 importFrom(magrittr,"%>%")
