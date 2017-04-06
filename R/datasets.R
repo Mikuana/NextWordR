@@ -20,6 +20,5 @@
 #'
 #' @usage raw_data_md5
 #' @format a named \code{\link{character}} vector with md5 values and names of corresponding files
-#' @keywords datasets
-#'
+#' @keywords datasets internal
 "raw_data_md5"

@@ -13,3 +13,4 @@ A set of named md5 hash strings which can be used to validate the contents of ea
 english language text files that are used to build the \code{\link{ngram_dictionary}}
 }
 \keyword{datasets}
+\keyword{internal}

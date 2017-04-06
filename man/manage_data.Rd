@@ -7,7 +7,7 @@
 manage_data()
 }
 \description{
-Check raw data, compare it to md5 sums, and download if necessary.
-TODO: add in collapse of data folder to put  all english texts at top of data
-TODO: fix paths. It's all screwed up due to conversion to a package.
+Check raw data, compare it to md5 sums, and download it if necessary. Management of the raw data
+through functions helps ensure that the processed dictionary of ngrams that is built using this
+data can be easily regenerated, without needed to pass around large intermediate data sets.
 }
