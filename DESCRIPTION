@@ -1,0 +1,21 @@
+Package: NextWordR
+Type: Package
+Title: An R-package/Shiny-application for word prediction
+Version: 0.1.0
+Author: Christopher Boyd
+Maintainer: <mikuana@gmail.com>
+Description: 
+  A Shiny application embedded directly into the package that it relies on which performs
+  text prediction based upon user input and returns word suggestions based upon a dictionary which
+  was built using a corpus of data provided by the SwiftKey company.
+Depends: R (>= 3.3.3)
+License: MIT + file LICENSE
+LazyData: FALSE
+RoxygenNote: 6.0.1
+Imports:
+    magrittr,
+    dplyr,
+    quanteda,
+    shiny,
+    knitr
+VignetteBuilder: knitr

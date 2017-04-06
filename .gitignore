@@ -1,0 +1,15 @@
+# Ignore R user stuff
+.Rproj.user
+.Rhistory
+.RData
+.RDataTmp
+.Ruserdata
+
+# Ignore raw data folder
+data-raw/
+
+# Ignore Rmarkdown caches
+notebooks/*_cache
+
+# Ignore scratch files
+scratch.*

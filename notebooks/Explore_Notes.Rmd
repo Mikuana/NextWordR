@@ -1,0 +1,179 @@
+---
+title: "Corpus Exploratory Analysis"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache=TRUE)
+```
+
+# Libraries
+
+```{r libraries}
+library(magrittr)
+library(NLP)
+library(tm)
+library(ngram)
+
+# We know that dplyr masks a lot of fuctions. That's ok.
+suppressPackageStartupMessages( library(dplyr) )
+```
+
+We will load the `caret` library explicitly when needed. This is to disambiguate the `ngram::preprocess` and `caret::preProcess` functions.
+
+# Explore Notes
+Looking exclusively at the text files in the en_US folder.
+
+In looking at the blog text, it appears that each line is a separate set of text to be considered (e.g. line 6 is not related to line 7; although sometimes it appears this way I believe that is just the result of chance). This also appears to hold true for the news text, and for the twitter text.
+
+I would go a step further with the twitter text and say that each line is a complete twitter message. This is supported by the results of this function
+
+```{r max-twitter-length}
+readLines(file.path('data','en_US', 'en_US.twitter.txt'), n=1e5) %>% 
+    sapply(., function(x) nchar(x) ) %>%
+    max(.)
+```
+
+In our investigation of blog posts, we find that the maximum line length is 5883, which is equivalent to a fairly comprehensive term paper. That's a lot of content on a single line, which would suggest that text on each line is the result of stripping out all line breaks from the original text.
+
+```{r blog-length-summary}
+readLines(file.path('data','en_US', 'en_US.blogs.txt'), n=1e5) %>% 
+    sapply(., function(x) nchar(x) ) %>%
+    summary(.)
+```
+
+It's interesting to see that we have similar descriptive statistics for the _news_ text. That would suggest that news articles are similar in length to blog posts. I personally would have expected news to be slightly longer.
+
+```{r news-length-summary}
+readLines(file.path('data','en_US', 'en_US.news.txt'), n=1e5) %>% 
+    sapply(., function(x) nchar(x) ) %>%
+    summary(.)
+```
+
+The actual source of these data are not described anywhere in the course. Will assume at this point that the data come directly from swiftkey.
+
+# Exploration
+
+A check of encodings was performed on the files that make up the corpus using a python script, which is an an extremely slow process, so we won't evalute this statement here. Instead.
+
+```{python encoding-check, eval=FALSE}
+import os
+from chardet.universaldetector import UniversalDetector
+
+file_dir = os.path.join('data', 'en_US')
+paths = []
+for file_name in os.listdir(file_dir):
+    paths.append(os.path.join(file_dir, file_name))
+
+for file in paths:
+    with open(file, 'rb') as f:
+        detector = UniversalDetector()
+        for line in f.readlines():
+            detector.feed(line)
+            if detector.done:
+                break
+        detector.close()
+
+    print(file)
+    print(detector.result)
+```
+
+The encoding results were:
+
+- twitter = {'confidence': 0.8253055815791176, 'encoding': 'ISO-8859-2'}
+- news = {'confidence': 0.99, 'encoding': 'utf-8'}
+- blogs = {'confidence': 0.8621960775465286, 'encoding': 'ISO-8859-2'}
+
+The text corpus that we're working with is fairly large, so after we read in the raw text (with the encodings that were identified in the previous python script) we will take a 4% sample of each corpus type for our exploration.
+
+```{r raw-corpus}
+corpus.twitter = readLines(file.path('data','en_US','en_US.twitter.txt'), encoding='ISO-8859-2')
+corpus.blogs = readLines(file.path('data','en_US','en_US.blogs.txt'), encoding='ISO-8859-2')
+corpus.news = readLines(file.path('data','en_US','en_US.news.txt'), encoding='UTF-8')
+```
+
+The twitter data includes some strangely encoded characters that even our highly specific encoding isn't able to make sense of. The result is that R throws a few warnings about embedded NULL characters, which we'll simply let be for now.
+
+We'll then identify a 1% sample from each corpus type and `concatenate` into a single string which can then be processed and summarized. Then we'll remove the raw data from memory and run `gc` to get some memory back.
+
+```{r sample}
+set.seed(57130)
+
+corpus.sample = 
+    list(corpus.twitter, corpus.blogs, corpus.news) %>%
+        sapply(., function(data) {
+            ix = caret::createDataPartition(1:length(data), p=0.01, list=FALSE)
+            data[ix]
+        }) %>% unlist
+
+rm(corpus.twitter, corpus.blogs, corpus.news)
+gc()
+```
+
+Next we'll preprocess. First we remove all punctuation to prevent those symbols from becoming tokenized. Then we'll convert all words to lower case. While this may remove some clarity in meaning, it is necessary as a follow up to removing punctuation since casing due to the beginning of a sentence may accidentaly impart unintended meaning.
+
+```{r tokens}
+tkns = corpus.sample %>%
+  removePunctuation %>%
+  stripWhitespace %>%
+  tolower %>%
+  scan_tokenizer
+```
+
+Next, with our newly tokenized sample, we'll build a "monogram" so that we can understand the frequency of individual words, and calculate the number of unique words that we will need to include in order to describe certain segments of our corpus.
+
+A word of caution here: we're using the extremely efficient `ngram` pacakage to build our ngram libraries, but unfortunately the package relies on memory references ot C objects, and the authors warn about volatiliy of the ngram objects. In otherwords, we need to make sure that everything we need from ngram objects gets extracted into native R objects, else it will be lost.
+
+In order to get around this, we'll mostly use the `ngram` package as part of a function, where the ngrams are calculated and then immediately made avaailable in a  phrase table.
+
+```{r phrase-table-function}
+make_phrase_table = function(tokens, ngram_length) {
+  ngram(concatenate(tokens), n = ngram_length) %>%
+    get.phrasetable %>%
+    arrange(desc(freq)) %>%
+    mutate(prop_cum = cumsum(prop))
+}
+```
+
+And then for our monograms
+
+```{r monograms}
+monograms = make_phrase_table(tkns, 1)
+```
+
+```{r mongram-table}
+head(monograms, 1000)
+```
+
+Since we calculated a cummulative rate field, we can count the records with a cummulative rate value less than our desired coverage to calculate the number of words that we need to get a specified coverage of our corpus.
+ 
+ - 50% coverage: `r monograms %>% filter(prop_cum < 0.50) %>% nrow %>% scales::comma(.)` words
+ - 90% coverage: `r monograms %>% filter(prop_cum < 0.90) %>% nrow %>% scales::comma(.)` words
+ - 95% coverage: `r monograms %>% filter(prop_cum < 0.95) %>% nrow %>% scales::comma(.)` words
+
+# N-gram models
+
+> The goal here is to build your first simple model for the relationship between words. This is the first step in building a predictive text mining application. You will explore simple models and discover more complicated modeling techniques.
+>
+> Tasks to accomplish
+>
+> 1. Build basic n-gram model - using the exploratory analysis you performed, build a basic n-gram model for predicting the next word based on the previous 1, 2, or 3 words.
+>
+> 2. Build a model to handle unseen n-grams - in some cases people will want to type a combination of words that does not appear in the corpora. Build a model to handle cases where a particular n-gram isn't observed.
+
+Next we're going to build bigrams and trigrams, and add them into our frequency table.
+
+```{r ngrams}
+phrases = 
+  bind_rows(
+    monograms,
+    make_phrase_table(tkns, 2),
+    make_phrase_table(tkns, 3)
+  )
+```
+
+and now our `phrases` object is a phrase table with mono-, bi-, and tri-grams.
+
+
+## Markov Chain
+
