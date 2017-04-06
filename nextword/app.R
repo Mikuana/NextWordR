@@ -39,10 +39,6 @@ ui =
 
 # Start Server Definition
 server = function(input, output, session) {
-  ntext = eventReactive(input$goButton, {
-    input$n
-  })
-
   observeEvent(input$usertext, {  # Watch for a change in user text
     suggestions = nextword(input$usertext)  # generate new suggestion based upon user text
 
