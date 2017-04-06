@@ -1,53 +1,33 @@
 library(shiny)
-source(file.path('R', 'misc.R'))
+library(htmltools)
+library(NextWordR)
 
 ui =
   fluidPage(
     titlePanel("Next Word Text Prediction"),
       mainPanel(
         fluidRow(textInput('usertext', NULL, placeholder = "enter your text to see suggestions")),
-        fluidRow(textOutput('suggestions'))
-
+        fluidRow(
+          uiOutput('buttons')
+        )
       )
     )
 
 # Define server logic required to draw a histogram
-server <- function(input, output) {
+server = function(input, output) {
+  ntext = eventReactive(input$goButton, {
+    input$n
+  })
 
-   output$suggestions <- renderText({
-     input$usertext
+   output$buttons = renderUI({
+     suggestions = nextword(input$usertext)
+     div(
+        lapply(suggestions, function(x) {
+          actionButton(inputId = x, label = x)
+        })
+     )
    })
 }
 
 # Run the application
 shinyApp(ui = ui, server = server)
-
-
-# library(shiny)
-# library(miniUI)
-#
-# nextword_app = function() {
-#   ui =
-#     miniPage(
-#       gadgetTitleBar("Text Prediction"),
-#       fillCol(
-#         miniContentPanel(
-#           textInput('usertext', label=NULL, value = "", placeholder = 'write your text')
-#         ),
-#         miniContentPanel(
-#           textOutput('suggestion')
-#         )
-#       )
-#     )
-#
-#   server = function(input, output, session) {
-#     output$suggestion =  renderText({
-#       nextword(input$usertext)
-#     })
-#   }
-#
-#   runGadget(ui, server)
-# }
-#
-# nextword_app()
-# ```
