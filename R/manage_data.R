@@ -40,11 +40,11 @@ manage_data = function() {
   } else { rebuild = TRUE }  # if any files are missing, rebuild
 
   if(rebuild) {
-    cat("Something is wrong with the raw-data. Attempting to rebuild")
+    print("Something is wrong with the raw-data. Attempting to rebuild")
     zip_path =  base::file.path(raw_data_dir, 'Coursera-SwiftKey.zip')
 
     if(!file.exists(zip_path)) {
-      cat("zip doesn't exist. Downloading zip file. Go get some coffee.")
+      print("zip doesn't exist. Downloading zip file. Go get some coffee.")
       utils::download.file(raw_data_url, zip_path)
     }
 
@@ -55,8 +55,8 @@ manage_data = function() {
     )
     unlink(file.path(raw_data_dir, 'final'), recursive = TRUE)  # remove subfolders from unzip
 
-    cat("Raw data extracted. Run this function again to check md5 sums.")
+    print("Raw data extracted. Run this function again to check md5 sums.")
   } else {
-    cat("Raw data md5 sums match expected.")
+    print("Raw data md5 sums match expected.")
   }
 }
