@@ -13,3 +13,6 @@ notebooks/*_cache
 
 # Ignore scratch files
 scratch.*
+
+# Ignore shinyio app call script
+app.R
