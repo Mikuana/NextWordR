@@ -8,8 +8,9 @@
 # Ignore raw data folder
 data-raw/
 
-# Ignore Rmarkdown caches
+# Ignore Rmarkdown caches and rendered html
 notebooks/*_cache
+notebooks/*.nb.html
 
 # Ignore scratch files
 scratch.*
