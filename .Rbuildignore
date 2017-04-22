@@ -5,3 +5,4 @@
 ^notebooks$
 ^scratch\.md$
 ^app\.R$
+^rsconnect.*$
