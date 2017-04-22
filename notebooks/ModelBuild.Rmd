@@ -1,21 +1,23 @@
 ---
-title: "Dictionary Build"
+title: "ngram Dictionary Build"
 output: html_notebook
 ---
 
+This document contains the written and coded logic behind our the ngram lookup dictionary that we use to provide predictions of the next word in a sentence.
+
 # Libraries
 
-We'll make extensive use of the pipe command `%>%` from magrittr, and the bulk of our text mining tools will come from the `quanteda` package. Manipulation of more traditional R objects will be handled by `dplyr`. Additionally, we borrow limited tools from `caret` and `scales`, but those namespaces will be specified explicitly when they are needed.
-
 ```{r libraries, message=FALSE}
-library(magrittr)
+library(NextWordR)
 library(quanteda)
 library(dplyr)
 ```
 
 # Strategy
 
-The basic goal of this code is to build a table of ngrams which serve as a simple queryable object that gives us a "prediction" of the most likely next word based upon a query against the first and second words in the gram. This table will have a somewhat rigid structure, with defined fields for first, second, and third words. This means that the table will contain some structure that is unecessary overhead, but will allow us to query it in a consistent fashion. Sorting of the table by frequency weights will ensure that even when we get multiple returns for an ngram, selection of the head will give us the best guess. The head argument can be paramaterized as well to return additional suggestions in probability order.
+The basic goal of this code is to build a table of ngrams which serve as a simple object that we can query to get a complete list of the words to follow based upon one or two previous. This table will have a somewhat rigid structure, with defined fields for first and second words prior to the suggested field. This means that the table will contain some structure that is unecessary overhead, but will allow us to query it in a consistent fashion. Queries will use OR conditions to check the last two words against the first and second position, the last word against the first (with an NA in the second position), or if all else fails an NA in both the first and second position.
+
+The table will be sorted by an algorithm of frequency weights in combination with other factors to ensure that even when we get multiple returns for an ngram, selection of the head will give us the best guess.
 
 An example of what this table would look like is below:
 
@@ -41,10 +43,11 @@ The result of this query would be a match of the first and second words, along w
 
 # Data
 
-We're going to read in our english lanugage datasets, with specific codings that we've chosen based upon the results of a python utility that examined the files for likely encoding markers.
+We start by reading in our english lanugage datasets, with specific encodings that we've chosen based upon the results of a python utility that examined the files for likely encoding markers. This is still a guess, but we're hoping that it eliminates most issues with character interpretation.
 
 ```{r raw-text}
-fp = function(x) { file.path('data',paste0('en_US.', x,'.txt')) }
+# if you don't have the raw data already, use our function manage_data()
+fp = function(x) { file.path('..','data-raw',paste0('en_US.', x,'.txt')) }
 txt.twitter = readLines(fp('twitter'), encoding='ISO-8859-2')
 txt.blogs = readLines(fp('blogs'), encoding='ISO-8859-2')
 txt.news = readLines(fp('news'), encoding='UTF-8')
@@ -70,11 +73,13 @@ rm(txt.blogs, txt.news, txt.twitter)
 gc()
 ```
 
+Then we build this into a corpus.
+
 ```{r corpus}
 corp = corpus(txt)
 ```
 
-At this point, we perform the very memory intensive step, building our document feature matrix.
+At this point, we perform the most memory intensive step, building our document feature matrix, which includes ngrams of length 1 to 3. It is important to take note of the options used to preprocess the corpus, as those same preprocessing steps will need to be applied to our input text at processing.
 
 ```{r document-feature-matrix}
 docfeatmat = dfm(
@@ -84,6 +89,11 @@ docfeatmat = dfm(
   removeSymbols = TRUE
 )
 ```
+
+```{r}
+docfeatmat
+```
+
 
 And then attempt to convert the ngram data into a table that will fit with our prototype.
 

@@ -1,0 +1,8 @@
+---
+title: "Unseen Word Estimation"
+output: html_notebook
+---
+
+A key problem to be solved in this project is the smoothing of prediction algorithms to account for unseen words in the corpus. We don't want to assign a probability of 0 to any known english word, as that is clearly a faulty assumption. To be completely fair, it's a faulty assumption to assign a probability of 0 to _any_ word, with word being defined extremely loosely. However, for practical purposes, and to best serve the intent of this project (english language text prediction), we'll settle for english words.
+
+> Good–Turing frequency estimation is a statistical technique for estimating the probability of encountering an object of a hitherto unseen species, given a set of past observations of objects from different species. (In drawing balls from an urn, the 'objects' would be balls and the 'species' would be the distinct colors of the balls (finite but unknown in number). After drawing {\displaystyle R_{\text{red}}} R_\text{red} red balls, {\displaystyle R_{\text{black}}} R_\text{black} black balls and {\displaystyle R_{\text{green}}} R_\text{green} green balls, we would ask what is the probability of drawing a red ball, a black ball, a green ball or one of a previously unseen color.
