@@ -21,4 +21,5 @@ Imports:
     shiny,
     knitr
 VignetteBuilder: knitr
-Suggests: testthat
+Suggests: 
+    testthat
