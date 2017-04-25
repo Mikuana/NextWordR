@@ -5,8 +5,9 @@
 .RDataTmp
 .Ruserdata
 
-# Ignore raw data folder
-data-raw/
+# Ignore raw data folder except for mastergram
+data-raw/*
+!data-raw/mastergram.Rmd
 
 # Ignore Rmarkdown caches and rendered html
 notebooks/*_cache
