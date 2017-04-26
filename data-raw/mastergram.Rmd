@@ -53,7 +53,7 @@ txt.news = readLines(fp('news'), encoding='UTF-8')
 rm(fp)
 ```
 
-The twitter file causes some issues due to lines with "embedded nul". We then build this raw text into a `quanteda` corpus object. Due to the large size of these texts, and memory limitations of my workstation, we'll be building our corpus out of a sample of each body of text. However, this should still be a statistically relevant data set since we'll be performing a random 8% (this number is arbitrary) sample. We'll sample the same  proportion from each source to ensure fair representation of each type of text body.
+The twitter file causes some issues due to lines with "embedded nul". Considering how much data we're getting even with those errors, we're just going to let them go. Next we build this raw text into a `quanteda` corpus object. Due to the large size of these texts, and memory limitations of my workstation, we'll be building our corpus out of a sample of each body of text. However, this should still be a statistically relevant data set since we'll be performing a random 4% (this number is arbitrary) sample. We'll sample the same proportion from each source to ensure fair representation of each type of text body.
 
 ```{r sample-text}
 set.seed(57130)
@@ -65,21 +65,15 @@ txt =
     }) %>% unlist
 ```
 
-We'll ignore the EOF errors. Once our sample text is built, we dump the complete raw objects and recover some memory.
+We'll ignore the EOF errors. Once our sample text is built, we dump the raw objects and recover some memory. Then we build this into a corpus.
 
 ```{r dump}
 rm(txt.blogs, txt.news, txt.twitter)
 gc()
-```
-
-Then we build this into a corpus.
-
-```{r corpus}
 corp = corpus(txt)
-tokenize()
 ```
 
-At this point, we perform the most memory intensive step, building our document feature matrix, which includes ngrams of length 1 to 3. It is important to take note of the options used to preprocess the corpus, as those same preprocessing steps will need to be applied to our input text at processing.
+At this point, we perform the most memory intensive step, building our document feature matrix, which includes ngrams of length 1 to 3. It is important to take note of the options used to preprocess the corpus, as those same preprocessing steps will need to be applied to our input text at processing. We'll be saving our document feature matrixes along the way in case R crashes.
 
 ```{r document-feature-matrix}
 dfm1 = dfm(
@@ -112,7 +106,9 @@ rm(corp, txt)
 gc()
 ```
 
-Before we can implement our back-off model we first need to estimate the actual prevalence of ngrams "in the wild" based upon the samples in our corpus. For this we will use Good-Turing estimation. Additionally, after we determine our Good-Turing proporation we can discard the data that is very unlikely to be useful in our model. Specifically, we will remove all ngrams that have a frequency of 1 in our sample. We're doing this at this point primarily for computational performance reasons.
+And now we have a objects for mono-, bi-, and trigrams. Eventually we'll combine these as a sort of lookup dictionary, but first need to estimate the actual prevalence of ngrams "in the wild" based upon the samples in our corpus. This is important when we implement our back-off model.
+
+For this task we will use Good-Turing estimation. Additionally, after we determine our Good-Turing proporation we can discard the data that is very unlikely to be useful in our model. Specifically, we will remove all ngrams that have a frequency of 1 in our sample. We're doing this as soon as possible primarily for computational performance reasons.
 
 ```{r Good-Turing Estimation}
 dfm1 = readRDS(file.path('dfm1.rds'))
@@ -123,7 +119,7 @@ df1 = docfreq(dfm1) %>%
     gtprop = edgeR::goodTuringProportions(.),
     stringsAsFactors=FALSE
   ) %>%
-  filter(freq > 1) %>%
+  # filter(freq > 1) %>%
   tibble::as_tibble(.) %>%
   arrange(desc(gtprop))
 
@@ -135,7 +131,7 @@ df2 = docfreq(dfm2) %>%
     gtprop = edgeR::goodTuringProportions(.),
     stringsAsFactors=FALSE
   ) %>%
-  filter(freq > 1) %>%
+  # filter(freq > 1) %>%
   tibble::as_tibble(.) %>%
   arrange(desc(gtprop))
 
@@ -147,7 +143,7 @@ df3 = docfreq(dfm3) %>%
     gtprop = edgeR::goodTuringProportions(.),
     stringsAsFactors=FALSE
   ) %>%
-  filter(freq > 1) %>%
+  # filter(freq > 1) %>%
   tibble::as_tibble(.) %>%
   arrange(desc(gtprop))
 
@@ -184,6 +180,44 @@ df2 = df2 %>%
   )
 ```
 
+```{r backoff}
+library(edgeR)
+keygroups = select(df2, key1, key2) %>% unique
+keygroups = keygroups[30000,]
+apply(keygroups, 1, function(x) {
+  sugg = 
+    df2 %>% 
+    filter(key1 == x[['key1']] & is.na(key2)) %>% # subset keygroup records
+    mutate(gtprop = goodTuringProportions(freq))  # calculate proportions for seen records
+
+  P0 = goodTuring(sugg$freq)$P0                   # calculate prevalence of unseen grams
+
+  sugg_drop = 
+    df1 %>%                                       # switch to lower level ngram
+    filter(is.na(key1) & is.na(key2)) %>%         # subset drop level keygroup records
+    mutate(gtprop = goodTuringProportions(freq))  # calculate proportions of seen records
+
+  dropCoverP =
+    sugg_drop %>%
+    filter(suggest %in% sugg$suggest) %>%         # only suggestions covered by higher ngram
+    .$gtprop %>% sum                              # calculate total covered proportion
+  
+  sugg_drop = 
+    sugg_drop %>%
+    filter(!suggest %in% sugg$suggest) %>%        # remove suggestions already in higher ngram
+    mutate(
+      gtprop = gtprop / (1 - dropCoverP),         # rescale prop after removing covered ngrams
+      gtprop = gtprop * P0,                       # rescale prop as share of P0
+      key1 = x[['key1']],                         # set keys of lower level to match higher
+      key2 = x[['key2']]
+    )
+
+  bind_rows(sugg, sugg_drop) %>%        # bind lower level ngram with higher
+    arrange(desc(gtprop))
+})
+
+```
+
 And a similar process with the trigram table.
 
 ```{r trigram-prep}
@@ -199,19 +233,17 @@ df3 = df3 %>%
   )
 ```
 
-Now we're ready to bind our ngram tables together, and we can start thinking a bit more about the end product. How many word suggestions could possibly be useful? For live text prediction app, it seems unreasonable to display for than 5 words at a time. So in each possible "scenario"" of making suggestion, we'll limit our table to 5 records.
+Now we're ready to bind our ngram tables together, and we can start thinking a bit more about the end product. How many word suggestions could possibly be useful? For live text prediction app, it seems unreasonable to display for than 5 words at a time. So in each possible "scenario"" of making suggestions, we'll limit our table to 5 records.
 
-If we consider the grouping of key1 and key2 as a composite key which comprises a "scenario", we can partition our ngram tables by this key and perform a ranking of every suggestion by it's gtprop. In fact we're just using the `row_number` function, but because we've ordered our ngram tables by descending `grprop`, row number is effectively the same thing.
-
-Accordingly, we can then filter the entire table by keygroup rank to limit to just the top 5 suggestions that we could make for every scenario that we are aware of.
+If we consider the grouping of key1 and key2 as a composite key which comprises a "scenario", we can partition our ngram tables by this key and perform a ranking of every suggestion by it's `gtprop` value. In fact we're just using the `row_number` function, but because we've ordered our ngram tables by descending `gtprop`, `row_number` is effectively the same. We can then filter the entire table by `keygroup_rank` to limit to just the top 5 suggestions that we could make for every scenario that we are aware of.
 
 ```{r mastergram}
-mastergram = bind_rows(df1, df2, df3) %>%
-  group_by(key1, key2) %>%  # define our key grouping
-  mutate(keygroup_rank = row_number()) %>%  # perform ranking
-  filter(keygroup_rank <= 5) %>%  # limit to top 5 suggestions for each key group
-  group_by() %>%  # release grouping
-  transmute(
+mastergram = bind_rows(df1, df2, df3) %>%  # combine our ngram tables into one
+  group_by(key1, key2) %>%  # define our key grouping in the table
+  mutate(keygroup_rank = row_number()) %>%  # perform ranking of each scenario
+  filter(keygroup_rank <= 5) %>%  # limit to top 5 suggestions for each scenario
+  group_by() %>%  # release grouping on table
+  transmute(  # clean up table, and cast characters as factors (for performance)
     key1 = as.factor(key1),
     key2 = as.factor(key2),
     suggest = as.factor(suggest),
@@ -220,10 +252,15 @@ mastergram = bind_rows(df1, df2, df3) %>%
   )
 ```
 
-This leaves us with a fairly compact ngram table of `r format(object.size(mastergram),'MB')`.
+This leaves us with a fairly compact ngram table of `r format(object.size(mastergram),'MB')`. We'll save that for later.
 
 ```{r}
 saveRDS(mastergram, 'mastergram.rda')
 ```
 
 And now we have to decide how our backoff model should work.
+
+```{r}
+mastergram = readRDS('mastergram.rda')
+```
+
