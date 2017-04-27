@@ -110,6 +110,8 @@ And now we have a objects for mono-, bi-, and trigrams. Eventually we'll combine
 
 For this task we will use Good-Turing estimation. Additionally, after we determine our Good-Turing proporation we can discard the data that is very unlikely to be useful in our model. Specifically, we will remove all ngrams that have a frequency of 1 in our sample. We're doing this as soon as possible primarily for computational performance reasons.
 
+## Data Frame
+
 ```{r Good-Turing Estimation}
 dfm1 = readRDS(file.path('dfm1.rds'))
 df1 = docfreq(dfm1) %>%
@@ -119,33 +121,28 @@ df1 = docfreq(dfm1) %>%
     gtprop = edgeR::goodTuringProportions(.),
     stringsAsFactors=FALSE
   ) %>%
-  # filter(freq > 1) %>%
   tibble::as_tibble(.) %>%
-  arrange(desc(gtprop))
+  arrange(desc(freq))
 
 dfm2 = readRDS(file.path('dfm2.rds'))
 df2 = docfreq(dfm2) %>%
   data.frame(
     gram = names(.),
     freq = .,
-    gtprop = edgeR::goodTuringProportions(.),
     stringsAsFactors=FALSE
   ) %>%
-  # filter(freq > 1) %>%
   tibble::as_tibble(.) %>%
-  arrange(desc(gtprop))
+  arrange(desc(freq))
 
 dfm3 = readRDS(file.path('dfm3.rds'))
 df3 = docfreq(dfm3) %>%
   data.frame(
     gram = names(.),
     freq = .,
-    gtprop = edgeR::goodTuringProportions(.),
     stringsAsFactors=FALSE
   ) %>%
-  # filter(freq > 1) %>%
   tibble::as_tibble(.) %>%
-  arrange(desc(gtprop))
+  arrange(desc(freq))
 
 rm(dfm1, dfm2, dfm3)
 gc()
@@ -154,16 +151,9 @@ gc()
 We need to cast our ngram data frames into a more consistent shape so that we can eventually bind them together. For the monograms this just means renaming, but for our bi- and trigrams we need to separate the gram column by the space character.
 
 ```{r monogram-prep}
-df1 = df1 %>%
-  transmute(
-    key1 = as.character(NA),
-    key2 = as.character(NA),
-    suggest = gram,
-    freq,
-    gtprop,
-    gramlength = 1L
-  )
+df1 = rename(df1, suggest = gram)
 ```
+
 
 The bigram requires a step that the monogram didn't, which is the separation of the key word and the suggestion (the monogram didn't have any keywords). We do this with the `tidyr` package.
 
@@ -172,50 +162,51 @@ df2 = df2 %>%
   tidyr::separate(gram, c("key1", "suggest"), sep = " ", remove=TRUE) %>% 
   transmute(
     key1,
-    key2 = as.character(NA),
     suggest,
-    freq,
-    gtprop,
-    gramlength = 2L
+    freq
   )
 ```
 
 ```{r backoff}
 library(edgeR)
-keygroups = select(df2, key1, key2) %>% unique
-keygroups = keygroups[30000,]
-apply(keygroups, 1, function(x) {
-  sugg = 
-    df2 %>% 
-    filter(key1 == x[['key1']] & is.na(key2)) %>% # subset keygroup records
-    mutate(gtprop = goodTuringProportions(freq))  # calculate proportions for seen records
+library(data.table)
 
-  P0 = goodTuring(sugg$freq)$P0                   # calculate prevalence of unseen grams
+keep = 15   # number of suggestions to keep. Applied at each level
+keygroups = select(df2, key1) %>% unique
+keygroups = keygroups[1:10000,]
 
-  sugg_drop = 
-    df1 %>%                                       # switch to lower level ngram
-    filter(is.na(key1) & is.na(key2)) %>%         # subset drop level keygroup records
-    mutate(gtprop = goodTuringProportions(freq))  # calculate proportions of seen records
+dt1 = as.data.table(df1)
+dt1 = dt1[order(freq)]
+dt2 = as.data.table(df2) %>% setkey(key1, freq)
 
-  dropCoverP =
-    sugg_drop %>%
-    filter(suggest %in% sugg$suggest) %>%         # only suggestions covered by higher ngram
-    .$gtprop %>% sum                              # calculate total covered proportion
-  
-  sugg_drop = 
-    sugg_drop %>%
-    filter(!suggest %in% sugg$suggest) %>%        # remove suggestions already in higher ngram
-    mutate(
-      gtprop = gtprop / (1 - dropCoverP),         # rescale prop after removing covered ngrams
-      gtprop = gtprop * P0,                       # rescale prop as share of P0
-      key1 = x[['key1']],                         # set keys of lower level to match higher
-      key2 = x[['key2']]
-    )
-
-  bind_rows(sugg, sugg_drop) %>%        # bind lower level ngram with higher
-    arrange(desc(gtprop))
-})
-
+bigrams = 
+  apply(keygroups, 1, function(x) {
+    # subset keygroup records
+    sugg = dt2[(x[['key1']])]
+    # calculate proportions for seen records
+    sugg[,gtprop := goodTuringProportions(freq)]
+    # calculate prevalence of unseen grams
+    P0 = goodTuring(sugg$freq)$P0
+    # calculate proportion of dt1 that's already covered in dt2
+    lower_CoverP = dt1[suggest %in% sugg$suggest, gtprop] %>% sum
+    # remove suggestions already in higher ngram, keep select amount
+    sugg_lower = dt1[suggest %in% sugg$suggest, tail(.SD, keep)] 
+    # rescale prop after removing covered ngrams proportion from 1
+    sugg_lower[, gtprop := gtprop / (1 - lower_CoverP)] 
+    # rescale prop as share of P0
+    sugg_lower[, gtprop := gtprop * P0] 
+    # add key value and ngram length to dt1
+    sugg_lower[, key1 := x[['key1']] ]
+    sugg_lower[, ngramL := 1L ]
+    # add ngram length to dt2
+    sugg[, ngramL := 2L ]
+    # bind lower level ngram with higher
+    combined = rbindlist(list(sugg, sugg_lower), use.names=TRUE, fill = FALSE)
+    # keep only the top select amount
+    combined[order(gtprop), tail(.SD, keep)]
+  }) %>%
+  rbindlist(., use.names=FALSE, fill = FALSE) %>%
+  setkey(key1, gtprop)
 ```
 
 And a similar process with the trigram table.
