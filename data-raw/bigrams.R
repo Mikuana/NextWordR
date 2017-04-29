@@ -3,6 +3,8 @@ library(magrittr)
 library(edgeR)
 library(data.table)
 
+timestamp()
+
 # Load document feature matrices and convert to table
 dfm1 = readRDS(file.path('dfm1.rds'))
 dt1 = docfreq(dfm1) %>%
@@ -65,3 +67,5 @@ bigrams =
   setkey(key1, gtprop)
 
 saveRDS(bigrams, 'bigrams.rds')
+
+timestamp()
