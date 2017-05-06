@@ -2,20 +2,17 @@ library(quanteda)
 library(magrittr)
 library(edgeR)
 library(data.table)
+library(foreach)
+
+# Set parameters for bigram table construction
+keep = 15   # number of suggestions to keep. Applied at each level
 
 timestamp()
 
-# Load document feature matrices and convert to table
-dfm1 = readRDS(file.path('dfm1.rds'))
-dt1 = docfreq(dfm1) %>%
-  data.table(
-    suggest = names(.),
-    freq = .,
-    stringsAsFactors=FALSE
-  )
-dt1 = dt1[,gtprop := goodTuringProportions(freq)][order(gtprop)]
+# Load monograms
+monograms = readRDS(file.path('data-raw', 'monograms.rds'))
 
-dfm2 = readRDS(file.path('dfm2.rds'))
+dfm2 = readRDS(file.path('data-raw', 'dfm2.rds'))
 dt2 = docfreq(dfm2) %>%
   data.table(
     gram = names(.),
@@ -25,7 +22,7 @@ dt2 = docfreq(dfm2) %>%
   .[order(freq)]
 
 # Drop dfms and reclaim some memory
-rm(dfm1, dfm2)
+rm(dfm2)
 gc()
 
 # Spread gram
@@ -33,28 +30,32 @@ dt2 = dt2 %>%
   tidyr::separate(gram, c("key1", "suggest"), sep = " ", remove=TRUE) %>%
   setkey(key1)
 
-# Set parameters for bigram table construction
-keep = 15   # number of suggestions to keep. Applied at each level
-keygroups = dt2[,unique(key1)]
+# create keygroups for iteration
+keygroups = dt2
+# exclude keygroups with only a single entry
+keygroups = keygroups[ , .(COUNT = .N), by=key1][COUNT>1, !"COUNT"]
+
+doParallel::registerDoParallel(cores=4)
 
 bigrams =
-  lapply(keygroups, function(x) {
+  foreach(x = 1:nrow(keygroups)) %dopar% {
+    kg = keygroups[x]
     # subset keygroup records
-    sugg = dt2[x]
+    sugg = dt2[kg]
     # calculate proportions for seen records
     sugg[,gtprop := goodTuringProportions(freq)]
     # calculate prevalence of unseen grams
     P0 = goodTuring(sugg$freq)$P0
     # calculate proportion of dt1 that's already covered in dt2
-    lower_CoverP = dt1[suggest %in% sugg$suggest, gtprop] %>% sum
+    lower_CoverP = monograms[suggest %in% sugg$suggest, gtprop] %>% sum
     # remove suggestions already in higher ngram, keep select amount
-    sugg_lower = dt1[!suggest %in% sugg$suggest, tail(.SD, keep)]
+    sugg_lower = monograms[!suggest %in% sugg$suggest, tail(.SD, keep)]
     # rescale prop after removing covered ngrams proportion from 1
     sugg_lower[, gtprop := gtprop / (1 - lower_CoverP)]
     # rescale prop as share of P0
     sugg_lower[, gtprop := gtprop * P0]
     # add key value and ngram length to dt1
-    sugg_lower[, key1 := x ]
+    sugg_lower[, key1 := kg ]
     sugg_lower[, ngramL := 1L ]
     # add ngram length to dt2
     sugg[, ngramL := 2L ]
@@ -62,10 +63,10 @@ bigrams =
     combined = rbindlist(list(sugg, sugg_lower), use.names=TRUE, fill = FALSE)
     # keep only the top select amount
     combined[order(gtprop), tail(.SD, keep)]
-  }) %>%
+  } %>%
   rbindlist(use.names=FALSE, fill = FALSE) %>%
   setkey(key1, gtprop)
 
-saveRDS(bigrams, 'bigrams.rds')
+saveRDS(bigrams, file.path('data-raw','bigrams.rds'))
 
 timestamp()
