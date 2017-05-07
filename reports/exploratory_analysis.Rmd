@@ -1,0 +1,179 @@
+---
+title: "Swiftkey Data Exploratory Analysis"
+author: "Christopher Boyd"
+date: "May 6, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  cache = TRUE
+)
+```
+
+# Libraries
+
+```{r library}
+suppressMessages(library(dplyr))
+suppressMessages(library(quanteda))
+library(ggplot2)
+```
+
+# Prep
+
+All of the code used to generate this report is included in the [repository](https://github.com/Mikuana/NextWordR). The project is structured as an R package, which will include all of the components needed for the Shiny application. An R package was chosen since it offers a number of well defined practices for managing dependencies, testing, and documentation. Several scripts in that repository are used to generate the `corp.train` object that is loaded into this document. The general purpose of those scripts is described below.
+
+Due to memory limitations on my workstation, a 10% random sample of each of the three text files for this project - blog, news, and Twitter - were used to build a single text file. To be clear, this is 10% of each of the three files, so this is a representative sample of these files. The result was then split again with 30% reserved for testing, and 70% for model training. Seeds are set prior to sampling so these samples are reproducible given that the source data is still available. Additionally, md5 checksums are performed on the raw project text files to ensure that downloaded objects match the expectations of this package. The source data is *not* included in the repository due to the size of the files. The rest of this exploration will be performed on the `corp.train` object generated from our 70% training data split.
+
+```{r read-corp}
+corp = readRDS(file.path('..', 'data-raw', 'corp.train.rds'))
+```
+
+# Document Feature Matrix
+
+After loading this corpus, we transform it into a document-feature matrix, which is a memory efficienct way of representing text, text metadata, and the features (AKA words) contained therein. Due to the way that we've constructed our corpus, this matrix will consider each line read from our text files as a separate "document". This is conceptually accurate, since each line in our source data represented an individual _Tweet_, news article, or blog article.
+
+The `quanteda::dfm` function accepts a number of arguments which determine preprocessing of the corpus as part of tokenization, which is essentially the programmatic identification of discrete "words" within our strings. Preprocessing of text makes an enormous impact on our final model, so each parameter needs to be considered carefully. We'll use the following preprocessing parameters which are commonly suggested by data scientists:
+
+ - tolower: cast all alpha characters to lower case. This avoids counting "This" and "this" as two separate words
+ - remove_numbers: remove tokens that consist only of numbers (e.g. 999)
+ - remove_punct: remove all [unicode punctuation classes](https://en.wikipedia.org/wiki/Unicode_character_property#General_Category) for tokenization
+ - remove_symbols: remove all [unicode symbol classes](https://en.wikipedia.org/wiki/Unicode_character_property#General_Category) for tokenization
+
+```{r doc-feat-build}
+doc_feat = dfm(
+  corp, ngrams=1, tolower=TRUE,
+  remove_numbers = TRUE, remove_punct = TRUE, remove_symbols = TRUE
+)
+
+doc_feat
+```
+
+We can see that we end up with almost 300 thousand "documents", with nearly 175 thousand "features", which we can loosely describe as words. We have chosen not to retain data on whether each document came from Twitter, a news article, or a blog article, as we have no plans (currently) to treat the data from these sources differently.
+
+## Preprocessing Parameters
+
+One interesting note about preprocessing with the `quanteda` package is the removal of punctuation and
+symbols. If you run a `dfm` on our training data with parameters `remove_punct=TRUE` and `remove_symbols=TRUE`, you get 15 thousand more features than if you run with both options as `FALSE`. This was confusing to me at first, because I assumed that the removal of these things would result in fewer unique features, rather than more. However, that turned out to be a misunderstanding on my part about how the function behaves. We'll use a brief example below, processing both ways and displaying the feature results.
+
+```{r feature-remove-example}
+ex = "This is my example. Right-out-of-the-box."
+dfm(
+  ex, ngrams=1, tolower=TRUE,
+  remove_numbers = TRUE, remove_punct = FALSE, remove_symbols = FALSE
+)
+
+dfm(
+  ex, ngrams=1, tolower=TRUE,
+  remove_numbers = TRUE, remove_punct = TRUE, remove_symbols = TRUE
+)
+```
+
+We can see from the output that our example text was handled in two very different ways. When punctuation and symbols are *not* removed, each segment of "right-out-of-the-box" is treated as a seperate feature, as opposed to "removing" them, which results in "right-out-of-the-box" being treated as a single token. So the removal is only performed for the purposes of tokenization of the text, but the resulting feature still contains the hypens. This results in more unique features because the hyphenated components combine to create a new feature, rather than being recognized as features that are already present in a non-hyphenated form.
+
+# Features
+
+To get a sense of what our top features are, we will use a word cloud. We'll limit to a minimum frequency of 1500, since word clouds are not particularly well suited for displying hundreds of thousands of data points at once.
+
+```{r}
+set.seed(9841566)
+textplot_wordcloud(
+  doc_feat, min.freq = 1500, random.order = FALSE,
+  rot.per = .25, colors = RColorBrewer::brewer.pal(8,"Dark2")
+)
+```
+
+Unsurprisingly, the most frequent words in our corpus (denoted both by font size and color) in the cloud are the words that are generally considered ["stop words"](https://en.wikipedia.org/wiki/Stop_words). These are incredibly common conjuctions that are often used repeatedly in the same sentence. In many text mining models these words are intentionally removed because they offer little in the way of context for search algorithms. However, in our case they provide a great deal of context because stop words are a valid and desired result for next-word prediction.
+
+To better summarize our corpus, we'll convert the matrix into a tibble, since that is easier (for me) to manipulate. We'll create a column for feature (named "gram", to reflect our eventual purpose of using these features as part of our ngram lookup), another for frequency, a third for proportion (of all words in the corpus), and a fourth for cumulative sum of proportions for all the features more common (i.e. higher in the table).
+
+```{r word-freq-tibbly}
+word_freq = docfreq(doc_feat) %>% 
+  data.frame(gram = names(.), freq=., stringsAsFactors=FALSE) %>% 
+  tibble::as.tibble(.) %>%
+  arrange(desc(freq))
+
+words = sum(word_freq$freq)
+
+word_freq = word_freq %>%
+  mutate(
+    prop = freq / words,
+    cumprop = cumsum(prop),
+    r = row_number()
+  )
+```
+
+Below, we visualize the 25% most common words with a cumulative proportion to show how we can represent an enormous amount of our entire corpus with a relatively small number of words.
+
+```{r}
+word_freq %>%
+  filter(cumprop <= 0.25) %>%  # limit to top 50%
+  mutate(gram = ordered(gram, level=word_freq$gram)) %>%
+  ggplot(aes(gram, cumprop)) +
+    geom_bar(stat="identity") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_y_continuous("proportion of all words in corpus", label=scales::percent) +
+    xlab("feature") +
+    ggtitle("Cumulative Feature Representation",
+            "each feature value represents the values of itself and all features to it's left") 
+    
+```
+
+But we definitely want more than 25% of all features to be represented in our model, although we clearly can't fit much more into a plot like the one above. If we drop the words themselves, and instead plot the number of unique features we see the entire cumulative range, and the breakpoints for significant amounts of coverage (e.g. 75%, 90%, etc.).
+
+```{r}
+cutoffs = c(0.75, 0.90, 0.95, 0.99)
+cuts = 
+  sapply(cutoffs, function(x) {
+    tail(filter(word_freq, cumprop <= x), 1)$r
+  })
+labs = paste(scales::percent(cutoffs), '-', scales::comma(cuts), 'features')
+
+
+word_freq %>%
+  ggplot(aes(r, cumprop)) +
+    geom_line() +
+    geom_vline(xintercept = cuts, size=0.2, color='red') +
+    annotate(geom="text", x=cuts[1], y=0.25, angle=90, vjust = -1, label=labs[1]) +
+    annotate(geom="text", x=cuts[2], y=0.25, angle=90, vjust = -0.20, label=labs[2]) +
+    annotate(geom="text", x=cuts[3], y=0.25, angle=90, vjust = -0.20, label=labs[3]) +
+    annotate(geom="text", x=cuts[4], y=0.25, angle=90, vjust = -0.20, label=labs[4]) +
+    scale_x_continuous("number of features", label=scales::comma) +
+    scale_y_continuous("proportion of all words in corpus", label=scales::percent) +
+    ggtitle("Cumulative Feature Representation") 
+```
+
+The curve quite clearly shows the diminishing returns of including additional features in our model. We can cover 75% of all the words in our corpus, using just over 2,000 features, but we need nearly five times as many features in order to cover 90%, and it just gets worse from there.
+
+While this picture may not be quite so clear when we eventually incorporate bigrams and trigrams into our model, the clear lesson here is that when we need to tune this model for performance reasons, limiting the number of features that we include in our model by cumulative proportion could eliminate enormous computational requirements, while still having a fairly minor impact upon the predictive capability of the model.
+
+# Corpus Summary
+
+To summarize our findings with the training data so far:
+
+ - documents (or lines) in our training data: `r scales::comma(doc_feat@Dim[1])`
+ - unique features (or words, or tokens) in our training data: `r scales::comma(doc_feat@Dim[2])`
+ - total features in our training data: `r scales::comma(words)`
+ - features needed to cover certain portions of our corpus
+    - `r labs[1]`
+    - `r labs[2]`
+    - `r labs[3]`
+    - `r labs[4]`
+
+# Next-Word Prediction Concept
+
+The basic goal of this code is to build a table of ngrams which serve as a simple object that we can query to get a complete list of the words to suggest based upon one or two previous words. The table will be sorted according to proportion estimates - which take into account _unseen words_ - and therefore selection of the top record of a query result will return the most likely next word based upon our model, followed by the second most likely, and the third, and so forth.
+
+An example of what this table might look like is below:
+
+| key1  | key2   | suggest | prop  |
+|:-----:|:------:|:-------:|------:|
+| this  | is     | the     | 0.25  |
+| this  | is     | my      | 0.10  |
+| this  | is     | her     | 0.05  |
+| this  | is     | ...     | ...   |
+
+This table would include all of potential suggestions for each key that we saw appropriate to retain for our model. What I mean by this, is that even if we know the top 100 words to follow a pair, we're never going to suggest that many, so we could trim the size of our model considerably by limiting the number of suggestions that are made for each key pair.
+
+A simple function will be written to wrap execute this query, simply by providing a string of text. A ShinyApp with a textbox input will provide this string, and the server in turn will render a number of buttons - based upon the results of the query - which will insert text onto the end of the provided string.

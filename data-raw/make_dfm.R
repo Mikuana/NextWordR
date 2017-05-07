@@ -1,5 +1,5 @@
 library(quanteda)
-library(dplyr)
+library(magrittr)
 
 # if you don't have the raw data already, use our function manage_data()
 fp = function(x) { file.path(paste0('en_US.', x,'.txt')) }
