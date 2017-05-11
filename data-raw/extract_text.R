@@ -11,7 +11,7 @@ set.seed(57130)
 txt =
   list(txt.twitter, txt.blogs, txt.news) %>%
   sapply(., function(data) {
-    ix = caret::createDataPartition(1:length(data), p=0.1, list=FALSE)
+    ix = caret::createDataPartition(1:length(data), p=0.10, list=FALSE)
     data[ix]
   }) %>%
   unlist
@@ -20,7 +20,7 @@ rm(txt.blogs, txt.news, txt.twitter)
 gc()
 
 set.seed(983212)
-ix.test = caret::createDataPartition(1:length(txt), p=0.3, list=FALSE) %>% drop
+ix.test = caret::createDataPartition(1:length(txt), p=0.30, list=FALSE) %>% drop
 txt.test = txt[ix.test]
 txt.train = txt[-ix.test]
 
