@@ -5,27 +5,12 @@
 # print('manage data')
 # source(file.path('data-raw', 'manage_data.R'))
 
-# # Extract sample text and cast it as a corpus object
-# print('extract sample')
-# source(file.path('data-raw', 'extract_text.R'))
+# Extract sample text and cast it as a corpus object
+print('extract sample')
+source(file.path('data-raw', 'extract_text.R'))
 
-# # Make Document Feature Matrices
-# gc()
-# print('make dfm')
-# source(file.path('data-raw', 'make_dfm.R'))
+print('make freq tables')
+source(file.path('data-raw', 'freq.R'))
 
-# # Make monograms file
-# print('make monograms')
-# source(file.path('data-raw', 'monograms.R'))
-
-# # Make bigrams file
-# print('make bigrams')
-# source(file.path('data-raw', 'bigrams.R'))
-
-# Make trigrams file
-print('make trigrams')
-source(file.path('data-raw', 'trigrams.R'))
-
-# Make quadgrams file
-print('make quadgrams')
-source(file.path('data-raw', 'quadgrams.R'))
+print('make grams tables')
+source(file.path('data-raw', 'gtbackoff.R'))

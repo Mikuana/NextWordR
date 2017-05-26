@@ -7,30 +7,34 @@
 #'
 #' Uses ngram dictionary to compare the end of the provided string and provide suggestions.
 #' @export
-nextword = function(input_text) {
-  text_tokens =
-    quanteda::tokens(
-      input_text,
-      what="fastestword",
-      removeNumbers = TRUE, removePunct = TRUE,
-      removeSymbols = TRUE
-    )[[1]]
+next_word = function(input_text) {
+  required_keys = 5
+  tokens = quanteda::tokenize(
+    input_text,
+    concatenator = " ",
+    what='fastestword',
+    remove_numbers = TRUE,
+    remove_punct = TRUE,
+    remove_symbols = TRUE
+  )
 
-  text_tokens =
-    text_tokens %>%
-    utils::tail(2) %>%
-    tolower(.)
+  provided_keys = tail(tokens[[1]], required_keys)
+  working_keys = provided_keys
+  sugg = as.character(NULL)
 
-  word1 = text_tokens[1]
-  word2 = text_tokens[2]
+  while(length(sugg) < 3) {
+    key_length = length(working_keys)
+    fill_length = required_keys - key_length
+    filled_keys = c(working_keys, rep('', times = fill_length))
 
-  candidates = dplyr::filter(
-    ngram_dictionary,
-    (key1 == word1 & key2 == word2) |
-      (key1 == word2 & is.na(key2)) |
-      (is.na(key1) & is.na(key2))
-    # TODO also return results if words dont match any keys, or the matches are poor
-  ) %>% utils::head(5)
+    # lookup suggestions based upon working keys
+    sugg = c(na.omit(as.character(grams[as.list(filled_keys), suggest])), sugg)
 
-  return(candidates$suggest)
+    # drop duplicate suggestions
+    sugg = unique(sugg, fromLast=TRUE)
+
+    # drop one key in preparation for extra loop through backoff if we don't have 3 suggestions
+    working_keys = tail(working_keys, key_length - 1)
+  }
+  return(tail(sugg, 3))
 }

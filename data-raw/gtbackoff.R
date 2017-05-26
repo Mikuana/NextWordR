@@ -32,7 +32,7 @@ gtbackoff = function(ngram_size = 6, start=1) {
       sugg = gramfreq
       sugg[, gtprop := goodTuringProportions(freq)]
       sugg[, ngramL := ngram ]
-      sugg = sugg[order(gtprop), tail(.SD, 5)]
+      sugg = sugg[order(gtprop), tail(.SD, 30)]
       fp = file.path('data-raw', 'gram1.rds')
       saveRDS(sugg, fp)
 
@@ -46,7 +46,7 @@ gtbackoff = function(ngram_size = 6, start=1) {
     # create keygroup table for smoothing iterations
     keygroups = gramfreq[ , .(COUNT = .N), by=keycolumns]
 
-    # file path for lower ngram 
+    # file path for lower ngram
     fp = file.path('data-raw', paste0('gram', ngram-1, '.rds'))
     lowgram = readRDS(fp)
 
@@ -56,7 +56,7 @@ gtbackoff = function(ngram_size = 6, start=1) {
     if(file.exists(fp)) { file.remove(fp)}
     # prepare for multi-threaded processing
     doParallel::registerDoParallel(cores=4)
-    for(ixs in seqs(nrow(keygroups), 1000)[1]) {
+    for(ixs in seqs(nrow(keygroups), 20000)) {
       grams =
         foreach(x = ixs) %dopar% {
           kg = keygroups[x]
@@ -70,8 +70,35 @@ gtbackoff = function(ngram_size = 6, start=1) {
           # add ngram length to suggestions
           sugg[, ngramL := ngram ]
 
+          if(P0 %in% c(0,1)) { # catch groups where Good-Turing estimation fails
+            combined = sugg  # don't smooth with lowgrams
+          } else {
+            # subset lowgrams that match keys -1, unless we're in bigrams
+            if(ngram == 2) {
+              lower = lowgram
+            } else {
+              lower = lowgram[.(kg[,tail(keycolumns, -1),with=FALSE])]
+            }
+            # calculate proportion of bigrams that's already covered in dt3
+            lower_CoverP = lower[suggest %in% sugg$suggest, gtprop] %>% sum
+            # remove suggestions already in higher ngram, keep select amount
+            sugg_lower = lower[!suggest %in% sugg$suggest, tail(.SD, 30-(5*(ngram-1)))]
+            # rescale prop after removing covered ngrams proportion from 1
+            sugg_lower[, gtprop := gtprop / (1 - lower_CoverP)]
+            # rescale prop as share of P0
+            sugg_lower[, gtprop := gtprop * P0]
+
+            # add key keys to lower gram suggestions
+            for(k in head(keycolumns)) {
+              sugg_lower[, (k) := kg[[k]]]
+            }
+
+            # bind lower level ngram with higher
+            combined = rbindlist(list(sugg, sugg_lower), use.names=TRUE, fill = FALSE)
+          }
           # keep only a specified number of suggestions
-          sugg[order(gtprop), tail(.SD, 5)]
+          combined[order(gtprop), tail(.SD, 30-(5*(ngram-1)))]
+
         } %>%
         rbindlist(use.names=FALSE, fill = FALSE)
 

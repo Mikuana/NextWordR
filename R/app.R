@@ -47,7 +47,7 @@ NextWordR_ui =
 #' @keywords internal
 NextWordR_server = function(input, output, session) {
   shiny::observeEvent(input$usertext, {  # Watch for a change in user text
-    suggestions = nextword(input$usertext)  # generate new suggestion based upon user text
+    suggestions = next_word(input$usertext)  # generate new suggestion based upon user text
 
     output$buttons = shiny::renderUI({  # generate new buttons for suggestions
       htmltools::div(
