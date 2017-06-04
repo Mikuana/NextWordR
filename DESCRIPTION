@@ -1,7 +1,7 @@
 Package: NextWordR
 Type: Package
 Title: An R-package/Shiny-application for word prediction
-Version: 0.0.0.9001
+Version: 0.0.0.9003
 Authors@R: person("Christopher", "Boyd", email = "mikuana@gmail.com",
   role = c("aut", "cre"))
 URL: https://github.com/Mikuana/NextWordR

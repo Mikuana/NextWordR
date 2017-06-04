@@ -39,6 +39,11 @@ NextWordR_ui =
         )
       ),
       shiny::fluidRow(shiny::uiOutput('buttons'))
+    ),
+    shiny::helpText(
+      "Note: this prototype has a known bug where clicking a word suggestion will result in",
+      "multiple words being inserted into the text box. This is an issue related to Shiny,",
+      "and cannot be easily addressed in this project."
     )
   )
 
