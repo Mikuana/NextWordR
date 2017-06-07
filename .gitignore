@@ -1,3 +1,6 @@
+# Ignore rendered pitch deck
+pitch.html
+
 # Ignore R user stuff
 .Rproj.user
 .Rhistory

@@ -1,0 +1,57 @@
+---
+title: "NextWordR"
+author: "Christopher Boyd"
+date: "June 6, 2017"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Overview
+
+- We developed an application that accepts user text input, and returns suggestions for the next
+word. This can be added to the text by clicking on the suggestion button.
+
+- Suggestions are based upon probability models using large text training data sets
+
+- The algorithm can accept any text input, and will fall back on more naive suggestions in the case
+of input text that was unseen in the training data
+
+- Model data, functions, and Shiny application code are all available in a [repository](https://github.com/Mikuana/NextWordR)
+
+- The Shiny application is hosted online via
+[ShinyApps.io](https://mikuana.shinyapps.io/NextWordR/), and embedded in this deck
+
+## Data
+
+- The source data for our prediction models is provided by the [Swiftkey](https://swiftkey.com/en)
+company in collaboration with:
+    - [Coursera](https://www.coursera.org/)
+    - [Johns Hopkins University](https://www.jhu.edu/)
+- These data includes millions of posts from :
+    - [Twitter](https://twitter.com/?lang=en)
+    - various blogs
+    - news articles
+- We randomly sampled 10% of these data due to resource constraints on the development machine
+
+## Algorithm
+
+- Word prediction is achieved using probabilistic estimates of the next word, based on up to 5 
+preceding words
+- Input words are processed into lower-case, without special characters, and accordingly suggestions
+are formatted in the same way
+- Good-Turing estimation used to predict for unseen or rarely seen combinations of up to 3 preceding words
+    - Good-Turing not used for higher level ngrams due to computational requirements
+- Back-off modeling reduces the number of preceding words provided to the model until at least 3
+suggestions are returned
+    - in some cases the combinations are completely novel to the model, and the suggestion is the
+    same as if there were no preceding words
+
+## App
+
+To use the app, simply type in the text box. Suggestions will appear as buttons below, which can
+be clicked to insert them into your text.
+
+<iframe src = 'https://mikuana.shinyapps.io/NextWordR/'></iframe>
